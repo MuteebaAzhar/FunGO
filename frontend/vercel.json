@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "app/api/[...proxy]/route.ts": { "maxDuration": 300 }
+  }
+}

@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --blue:        #1B5FA8;
+  --blue-dark:   #144a84;
+  --blue-light:  #EBF4FF;
+  --blue-mid:    #d0e6ff;
+  --green:       #3E9E3E;
+  --green-light: #EDF7ED;
+  --ink:         #1A2433;
+  --ink2:        #4A5568;
+  --ink3:        #8A9BB0;
+  --edge:        #DDE4EE;
+  --surface:     #F7F9FC;
+  --surface2:    #EFF3F8;
+  --white:       #FFFFFF;
+  --strong:      #92400e;
+  --strong-bg:   #fffbeb;
+  --strong-br:   #fcd34d;
+  --moderate:    #1e40af;
+  --moderate-bg: #eff6ff;
+  --moderate-br: #93c5fd;
+  --indicative:  #374151;
+  --indicative-bg: #f9fafb;
+  --indicative-br: #d1d5db;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-plus), 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-mono, .seq {
+  font-family: var(--font-jb), 'Courier New', monospace;
+}
+
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: var(--surface); }
+::-webkit-scrollbar-thumb  { background: var(--edge); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink3); }
+
+input:focus, textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(27,95,168,0.18);
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(8px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.fade-up { animation: fadeUp 0.3s ease both; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.75s linear infinite; }
+
+@keyframes scan {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.scan { animation: scan 1.5s ease-in-out infinite; }
+
+/* Table hover */
+.pred-row:hover { background: var(--blue-light) !important; }
+
+/* Tier badge shadows */
+.sh-strong   { box-shadow: 0 1px 4px rgba(146,64,14,.15); }
+.sh-moderate { box-shadow: 0 1px 4px rgba(30,64,175,.12); }
+.sh-indicative { box-shadow: 0 1px 3px rgba(0,0,0,.07); }
+
+/* Divider */
+.hr { height:1px; background:var(--edge); border:none; margin:0; }
+
+/* Section card */
+.card {
+  background: #fff;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.card-head {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--surface);
+}

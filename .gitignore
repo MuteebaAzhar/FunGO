@@ -1,0 +1,11 @@
+# Model files — too large for GitHub
+*.pkl
+*.npy
+embedding_cache/
+__pycache__/
+*.pyc
+.env.local
+pipeline_outputs/
+/mnt/e/
+node_modules/
+.next/
