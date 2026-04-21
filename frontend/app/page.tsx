@@ -1,642 +1,347 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import clsx from 'clsx'
 
-// ── Types ──────────────────────────────────────────────────────
 type Tier = 'STRONG' | 'MODERATE' | 'INDICATIVE'
+interface Pred { go_term:string; ontology:string; ontology_label:string; confidence:number; ia_weight:number; combined_score:number; tier:Tier; tier_label:string; threshold:number }
+interface Summary { protein_id:string; total_filtered:number; displayed:number; by_ontology:{MFO:number;BPO:number;CCO:number}; by_tier:{STRONG:number;MODERATE:number;INDICATIVE:number}; has_strong_evidence:boolean; avg_combined_score:number }
+interface ProteinResult { taxon_id:number|null; summary:Summary; display:Pred[]; total_all:number }
+interface PredResponse { job_id:string; metadata:{n_proteins:number;device:string;total_displayed:number;elapsed_seconds:number}; predictions:Record<string,ProteinResult> }
 
-interface Pred {
-  go_term: string; ontology: string; ontology_label: string;
-  confidence: number; ia_weight: number; combined_score: number;
-  tier: Tier; tier_label: string; threshold: number;
-}
-interface Summary {
-  protein_id: string; total_filtered: number; displayed: number;
-  by_ontology: { MFO: number; BPO: number; CCO: number };
-  by_tier: { STRONG: number; MODERATE: number; INDICATIVE: number };
-  has_strong_evidence: boolean; avg_confidence: number;
-  avg_ia: number; avg_combined_score: number;
-}
-interface ProteinResult {
-  taxon_id: number | null; summary: Summary;
-  display: Pred[]; total_all: number;
-}
-interface PredResponse {
-  job_id: string;
-  metadata: {
-    n_proteins: number; device: string;
-    total_raw_predictions: number; total_filtered: number;
-    total_displayed: number; display_limit: number; elapsed_seconds: number;
-  };
-  predictions: Record<string, ProteinResult>;
-}
-interface ModelInfo {
-  device: string; fp16: boolean;
-  ontologies: { MFO: number; BPO: number; CCO: number };
-  thresholds: Record<string, { min_ia: number; min_conf: number }>;
-  display_limit: number;
-}
+const EXAMPLE_FASTA = `>sp|Q7L266|ASGL1_HUMAN Isoaspartyl peptidase OS=Homo sapiens OX=9606 GN=ASRGL1 PE=1 SV=2
+MNPIVVVHGGGAGPISKDRKERVHQGMVRAATVGYGILREGGSAVDAVEGAVVALEDDPE
+FNAGCGSVLNTNGEVEMDASIMDGKDLSAGAVSAVQCIANPIKLARLVMEKTPHCFLTDQ
+GAAQFAAAAMGVPEIPGEKLVTERNKKRLEKEKHEKGAQKTDCQKNLGTVGAVALDCKGNV
+AYATSTGGIVNKMVGRVGDSPCLGAGGYADNDIGAVSTTGHGESILKVNLARLTLFHIEQ
+GKTVEEAADLSLGYMKSRVKGLGGLIVVSKTGDWVAKWTSTSMPWAAAKDGKLHFGIDPD
+DTTITDLP`
 
-// ── Developer team ─────────────────────────────────────────────
+const ONT: Record<string,{pill:string;dot:string;label:string}> = {
+  MFO:{pill:'bg-purple-50 text-purple-700 border border-purple-200',dot:'#7c3aed',label:'Molecular Function'},
+  BPO:{pill:'bg-teal-50 text-teal-700 border border-teal-200',dot:'#0d9488',label:'Biological Process'},
+  CCO:{pill:'bg-amber-50 text-amber-700 border border-amber-200',dot:'#d97706',label:'Cellular Component'},
+}
+const TIER_CFG: Record<Tier,{bg:string;text:string;border:string;dot:string}> = {
+  STRONG:    {bg:'bg-amber-50', text:'text-amber-800',border:'border-amber-300',dot:'#d97706'},
+  MODERATE:  {bg:'bg-blue-50',  text:'text-blue-800', border:'border-blue-200', dot:'#1B5FA8'},
+  INDICATIVE:{bg:'bg-gray-50',  text:'text-gray-700', border:'border-gray-300', dot:'#6b7280'},
+}
 const TEAM = [
-  {
-    name: 'Dr. Beenish Maqsood',
-    role: 'Principal Investigator',
-    title: 'Assistant Professor',
-    dept: 'School of Biochemistry and Biotechnology',
-    uni: 'University of the Punjab, Lahore',
-    email: 'beenish.ibb@pu.edu.pk',
-    initials: 'BM',
-    color: '#1B5FA8',
-  },
-  {
-    name: 'Dr. Naeem Mahmood',
-    role: 'Co-Supervisor',
-    title: 'Assistant Professor',
-    dept: 'School of Biochemistry and Biotechnology',
-    uni: 'University of the Punjab, Lahore',
-    email: 'naeem.sbb@pu.edu.pk',
-    initials: 'NM',
-    color: '#3E9E3E',
-  },
-  {
-    name: 'Muteeba Azhar',
-    role: 'Lead Developer',
-    title: 'MS Researcher',
-    dept: 'School of Biochemistry and Biotechnology',
-    uni: 'University of the Punjab, Lahore',
-    email: '',
-    initials: 'MA',
-    color: '#6366f1',
-  },
+  {name:'Dr. Beenish Maqsood',title:'Assistant Professor',dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'beenish.ibb@pu.edu.pk',initials:'BM',color:'#1B5FA8'},
+  {name:'Dr. Naeem Mahmood',  title:'Assistant Professor',dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'naeem.sbb@pu.edu.pk',   initials:'NM',color:'#028090'},
+  {name:'Muteeba Azhar',      title:'MS Researcher',      dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'muteebaazhar18@gmail.com',initials:'MA',color:'#6366f1'},
 ]
 
-// ── Constants ──────────────────────────────────────────────────
-const EXAMPLE = `>sp|P00519|ABL1_HUMAN Tyrosine-protein kinase ABL1 OS=Homo sapiens OX=9606 GN=ABL1 PE=1 SV=4
-MLEICLKLVGCKSKKGLSSSSSCYLEEALQRPVASDFEPQGLSEAARWNSKENLLAGPSENDPNLFVALYDFVASGDNTLSITKGEKLRVLGYNHNGEWCEAQTKNGQGWVPSNYITPVNSLEKHSWYHGPVSRNAAEYLLSSGINGSFLVRESESSPGQRSISLRYEGRVYHYRINTASDGKLYVSSESRFNTLAELVHHHSTVADGLITTLHYPAPKRNKPTVYGVSPNYDKWEMERTDITMKHKLGGGQYGEVYEGVWKKYSLTVAVKTLKEDTMEVEEFLKEAAVMKEIKHPNLVQLLGVCTREPPFYIITEFMTYGNLLDYLRECNRQEVNAVVLLYMATQISSAMEYLEKKNFIHRDLAARNCLVGENHLVKVADFGLSRLMTGDTYTAHAGAKFPIKWTAPESLAYNKFSIKSDK`
-
-const ONT: Record<string, { pill: string; dot: string; label: string }> = {
-  MFO: { pill: 'bg-purple-50 text-purple-700 border border-purple-200', dot: '#7c3aed', label: 'Molecular Function' },
-  BPO: { pill: 'bg-teal-50  text-teal-700  border border-teal-200',    dot: '#0d9488', label: 'Biological Process' },
-  CCO: { pill: 'bg-amber-50 text-amber-700 border border-amber-200',   dot: '#d97706', label: 'Cellular Component' },
+function StatusDot({online}:{online:boolean|null}) {
+  if(online===null) return <span className="w-2 h-2 rounded-full bg-gray-300 inline-block animate-pulse"/>
+  return <span className={clsx('w-2 h-2 rounded-full inline-block',online?'bg-green-500':'bg-red-400')}/>
 }
-
-const TIER_CFG: Record<Tier, { bg: string; text: string; border: string; dot: string; shadow: string; label: string }> = {
-  STRONG:     { bg:'bg-amber-50',  text:'text-amber-800', border:'border-amber-300', dot:'#d97706', shadow:'sh-strong',   label:'Strong Evidence'   },
-  MODERATE:   { bg:'bg-blue-50',   text:'text-blue-800',  border:'border-blue-200',  dot:'#1B5FA8', shadow:'sh-moderate', label:'Moderate Evidence' },
-  INDICATIVE: { bg:'bg-gray-50',   text:'text-gray-700',  border:'border-gray-300',  dot:'#6b7280', shadow:'sh-indicative',label:'Indicative'       },
+function TierBadge({tier}:{tier:Tier}) {
+  const c=TIER_CFG[tier]; const label=tier==='STRONG'?'Strong Evidence':tier==='MODERATE'?'Moderate Evidence':'Indicative'
+  return <span className={clsx('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border',c.bg,c.text,c.border)}><span className="w-1.5 h-1.5 rounded-full" style={{background:c.dot}}/>{label}</span>
 }
-
-// ── Small atoms ────────────────────────────────────────────────
-function StatusDot({ online }: { online: boolean | null }) {
-  if (online === null) return <span className="w-2 h-2 rounded-full bg-gray-300 inline-block animate-pulse" />
-  return <span className={clsx('w-2 h-2 rounded-full inline-block', online ? 'bg-green-500' : 'bg-red-400')} />
+function OntBadge({ont}:{ont:string}) {
+  const o=ONT[ont]??{pill:'bg-gray-50 text-gray-600 border border-gray-200',dot:'#6b7280',label:ont}
+  return <span className={clsx('inline-block px-2 py-0.5 rounded text-xs font-mono font-medium',o.pill)}>{ont}</span>
 }
-
-function TierBadge({ tier }: { tier: Tier }) {
-  const c = TIER_CFG[tier]
-  return (
-    <span className={clsx('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border', c.bg, c.text, c.border, c.shadow)}>
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.dot }} />
-      {c.label}
-    </span>
-  )
+function ConfBar({v}:{v:number}) {
+  const pct=Math.round(v*100); const color=v>=0.8?'#059669':v>=0.65?'#1B5FA8':v>=0.5?'#d97706':'#ef4444'
+  return <div className="flex items-center gap-2"><div className="w-16 h-1.5 rounded-full bg-gray-100 border border-gray-200 overflow-hidden"><div className="h-full rounded-full" style={{width:`${pct}%`,background:color}}/></div><span className="text-xs font-mono font-semibold w-8" style={{color}}>{pct}%</span></div>
 }
-
-function OntBadge({ ont }: { ont: string }) {
-  const o = ONT[ont] ?? { pill: 'bg-gray-50 text-gray-600 border border-gray-200', dot: '#6b7280', label: ont }
-  return <span className={clsx('inline-block px-2 py-0.5 rounded text-xs font-mono font-medium', o.pill)}>{ont}</span>
-}
-
-function ConfBar({ v }: { v: number }) {
-  const pct = Math.round(v * 100)
-  const color = v >= 0.8 ? '#3E9E3E' : v >= 0.65 ? '#1B5FA8' : v >= 0.5 ? '#d97706' : '#ef4444'
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-16 h-1.5 rounded-full bg-gray-100 border border-gray-200 overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="text-xs font-mono font-medium w-8" style={{ color }}>{pct}%</span>
-    </div>
-  )
-}
-
-function Toggle({ on, set, color = 'blue' }: { on: boolean; set: (v: boolean) => void; color?: string }) {
-  const isBlue = color === 'blue'
-  return (
-    <button
-      onClick={() => set(!on)}
-      className={clsx('relative rounded-full border transition-all cursor-pointer',
-        on ? (isBlue ? 'bg-primary/10 border-primary/40' : 'bg-indigo-50 border-indigo-300') : 'bg-gray-100 border-gray-200'
-      )}
-      style={{ width: 40, height: 22 }}
-    >
-      <div className={clsx('absolute top-0.5 w-4 h-4 rounded-full transition-transform',
-        on ? `translate-x-5 ${isBlue ? 'bg-primary' : 'bg-indigo-500'}` : 'translate-x-0.5 bg-gray-400'
-      )} style={{ margin: 1 }} />
+function Collapsible({title,icon,children}:{title:string;icon:React.ReactNode;children:React.ReactNode}) {
+  const [open,setOpen]=useState(false)
+  return <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+    <button onClick={()=>setOpen(!open)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left">
+      <div className="flex items-center gap-2.5">{icon}<span className="text-sm font-semibold text-gray-800">{title}</span></div>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={clsx('transition-transform text-gray-400',open&&'rotate-180')}><path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
     </button>
-  )
+    {open&&<div className="border-t border-gray-100">{children}</div>}
+  </div>
 }
 
-// ── Protein result card ────────────────────────────────────────
-function ProteinCard({ pid, data, jobId, idx }: { pid: string; data: ProteinResult; jobId: string; idx: number }) {
-  const { summary: s, display, total_all } = data
-  const [debugOpen, setDebugOpen] = useState(false)
-
-  const handleCsvDownload = () => {
-    window.open(`/api/predict/csv?job_id=${jobId}`, '_blank')
-  }
-
-  return (
-    <div className="card fade-up" style={{ animationDelay: `${idx * 0.07}s` }}>
-
-      {/* ── Header ── */}
-      <div className="card-head flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-sm font-semibold text-primary">{pid}</span>
-            {data.taxon_id && (
-              <span className="text-xs text-ink3 font-mono bg-surface px-1.5 py-0.5 rounded border border-edge">
-                OX={data.taxon_id}
-              </span>
-            )}
-            {s.has_strong_evidence && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium">
-                Strong Evidence hits
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-ink3 mt-1">
-            {s.displayed} shown (top 20) &middot; {total_all} total filtered &middot; avg score {s.avg_combined_score.toFixed(3)}
-          </p>
+function ProteinCard({pid,data,jobId}:{pid:string;data:ProteinResult;jobId:string}) {
+  const {summary:s,display,total_all}=data
+  return <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+    <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-mono text-sm font-bold text-blue-700">{pid}</span>
+          {data.taxon_id&&<span className="text-xs text-gray-500 font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200">OX={data.taxon_id}</span>}
+          {s.has_strong_evidence&&<span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium">Strong Evidence hits</span>}
         </div>
-
-        {/* Ontology mini-counts */}
-        <div className="flex items-center gap-4">
-          {(['MFO','BPO','CCO'] as const).map(o => (
-            <div key={o} className="text-center">
-              <div className="text-lg font-bold leading-none" style={{ color: ONT[o].dot }}>{s.by_ontology[o]}</div>
-              <div className="text-xs text-ink3 mt-0.5">{o}</div>
-            </div>
-          ))}
-        </div>
+        <p className="text-xs text-gray-500 mt-1">{s.displayed} predictions shown · {total_all} total filtered · avg score {s.avg_combined_score.toFixed(3)}</p>
       </div>
-
-      {/* ── Tier summary bar ── */}
-      <div className="flex items-center gap-3 px-5 py-2.5 border-b border-edge bg-white flex-wrap">
-        {(['STRONG','MODERATE','INDICATIVE'] as Tier[]).map(t => (
-          <div key={t} className="flex items-center gap-1.5">
-            <TierBadge tier={t} />
-            <span className="text-xs text-ink3 font-medium">{s.by_tier[t]}</span>
-          </div>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
-          {total_all > 20 && (
-            <span className="text-xs text-ink3">+{total_all - 20} more in CSV</span>
-          )}
-          <button
-            onClick={handleCsvDownload}
-            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-primary/30 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M6 1v7M3.5 5.5L6 8l2.5-2.5M2 10h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-            </svg>
-            Download CSV
-          </button>
-        </div>
-      </div>
-
-      {/* ── Predictions table ── */}
-      {display.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-edge bg-surface">
-                <th className="text-left px-5 py-2.5 text-ink3 font-semibold tracking-wide">GO Term</th>
-                <th className="text-left px-3 py-2.5 text-ink3 font-semibold">Category</th>
-                <th className="text-left px-3 py-2.5 text-ink3 font-semibold">Evidence</th>
-                <th className="text-left px-3 py-2.5 text-ink3 font-semibold">Confidence</th>
-                <th className="text-left px-3 py-2.5 text-ink3 font-semibold">IA Weight</th>
-                <th className="text-left px-3 py-2.5 text-ink3 font-semibold">Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {display.map((p, i) => (
-                <tr key={i} className={clsx('pred-row border-b border-edge/60 transition-colors', i % 2 === 0 ? 'bg-white' : 'bg-surface/40')}>
-                  <td className="px-5 py-2.5">
-                    <a
-                      href={`https://amigo.geneontology.org/amigo/term/${p.go_term}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="font-mono text-primary hover:text-primary-dark hover:underline"
-                    >
-                      {p.go_term}
-                    </a>
-                    <div className="text-ink3 text-xs mt-0.5">{p.ontology_label}</div>
-                  </td>
-                  <td className="px-3 py-2.5"><OntBadge ont={p.ontology} /></td>
-                  <td className="px-3 py-2.5"><TierBadge tier={p.tier} /></td>
-                  <td className="px-3 py-2.5"><ConfBar v={p.confidence} /></td>
-                  <td className="px-3 py-2.5 font-mono text-ink2">{p.ia_weight.toFixed(4)}</td>
-                  <td className="px-3 py-2.5 font-mono font-semibold text-ink">{p.combined_score.toFixed(4)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="px-5 py-10 text-center">
-          <p className="text-sm text-ink3">No predictions passed the evidence filter for this protein.</p>
-          <p className="text-xs text-ink3 mt-1">Use debug mode to see why predictions were filtered out.</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Loading state ──────────────────────────────────────────────
-function LoadingCard() {
-  return (
-    <div className="card py-16 flex flex-col items-center gap-5">
-      <div className="relative w-14 h-14">
-        <div className="absolute inset-0 rounded-full border-2 border-primary/20 border-t-primary spin" />
-      </div>
-      <div className="text-center">
-        <p className="text-sm font-semibold text-ink">Running prediction pipeline</p>
-        <p className="text-xs text-ink3 mt-1">ESM2-t36-3B embedding + XGBoost scoring</p>
-        <p className="text-xs text-ink3">This takes 20–60 s with embedding cache</p>
-      </div>
-      <div className="w-40 h-1 bg-surface2 rounded overflow-hidden relative">
-        <div className="absolute inset-y-0 w-16 bg-primary/40 rounded scan" />
+      <div className="flex items-center gap-4">
+        {(['MFO','BPO','CCO'] as const).map(o=><div key={o} className="text-center"><div className="text-base font-bold leading-none" style={{color:ONT[o].dot}}>{s.by_ontology[o]}</div><div className="text-xs text-gray-400 mt-0.5">{o}</div></div>)}
       </div>
     </div>
-  )
-}
-
-// ── Main page ──────────────────────────────────────────────────
-export default function Page() {
-  const [fasta,    setFasta]    = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
-  const [result,   setResult]   = useState<PredResponse | null>(null)
-  const [info,     setInfo]     = useState<ModelInfo | null>(null)
-  const [online,   setOnline]   = useState<boolean | null>(null)
-  const [debug,    setDebug]    = useState(false)
-  const [taxQ,     setTaxQ]     = useState('')
-  const [taxRes,   setTaxRes]   = useState<any[]>([])
-  const [taxLoad,  setTaxLoad]  = useState(false)
-  const fileRef                 = useRef<HTMLInputElement>(null)
-  const taxTimer                = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Health check
-  useEffect(() => {
-    fetch('/api/health')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        setOnline(!!d?.status)
-        if (d?.status) fetch('/api/model/info').then(r => r.json()).then(setInfo).catch(() => {})
-      })
-      .catch(() => setOnline(false))
-  }, [])
-
-  // Taxonomy search
-  const taxSearch = (q: string) => {
-    setTaxQ(q)
-    if (taxTimer.current) clearTimeout(taxTimer.current)
-    if (q.trim().length < 2) { setTaxRes([]); return }
-    taxTimer.current = setTimeout(async () => {
-      setTaxLoad(true)
-      try {
-        const r = await fetch(`/api/taxonomy/search?q=${encodeURIComponent(q)}`)
-        const d = await r.json()
-        setTaxRes(d.results ?? [])
-      } catch { setTaxRes([]) }
-      finally   { setTaxLoad(false) }
-    }, 400)
-  }
-
-  // Submit
-  const submit = useCallback(async () => {
-    if (!fasta.trim()) return
-    setLoading(true); setError(null); setResult(null)
-    try {
-      const endpoint = debug ? '/api/predict/debug' : '/api/predict'
-      const r = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fasta }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
-      setResult(d)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [fasta, debug])
-
-  const seqCount = (fasta.match(/^>/gm) ?? []).length
-
-  return (
-    <div className="min-h-screen bg-white flex flex-col">
-
-      {/* ════════════════════════════════════════════
-          NAVBAR
-      ════════════════════════════════════════════ */}
-      <header className="sticky top-0 z-40 bg-white border-b border-edge">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-
-          {/* Logo + tagline */}
-          <div className="flex items-center gap-3">
-            <Image src="/logo.png" alt="FunGO Logo" width={110} height={46} className="object-contain" priority />
-            <div className="hidden sm:block h-7 w-px bg-edge" />
-            <span className="hidden sm:block text-xs text-ink3 italic">
-              Beyond Prediction — Understanding Function.
+    <div className="flex items-center gap-3 px-5 py-2.5 border-b border-gray-100 flex-wrap">
+      {(['STRONG','MODERATE','INDICATIVE'] as Tier[]).map(t=><div key={t} className="flex items-center gap-1.5"><TierBadge tier={t}/><span className="text-xs text-gray-500 font-medium">{s.by_tier[t]}</span></div>)}
+      <div className="ml-auto flex items-center gap-2">
+        {total_all>20&&<span className="text-xs text-gray-400">+{total_all-20} more in CSV</span>}
+        <button onClick={()=>window.open(`/api/predict/csv?job_id=${jobId}`,'_blank')} className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v7M3.5 5.5L6 8l2.5-2.5M2 10h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+          Download CSV
+        </button>
+      </div>
+    </div>
+    {display.length>0?<div className="overflow-x-auto"><table className="w-full text-xs">
+      <thead><tr className="border-b border-gray-100 bg-gray-50">
+        <th className="text-left px-5 py-2.5 text-gray-500 font-semibold">GO Term</th>
+        <th className="text-left px-3 py-2.5 text-gray-500 font-semibold">Category</th>
+        <th className="text-left px-3 py-2.5 text-gray-500 font-semibold">
+          <span className="flex items-center gap-1">Evidence
+            <span className="group relative cursor-default">
+              <span className="text-gray-400 text-xs">ⓘ</span>
+              <span className="invisible group-hover:visible absolute left-0 top-5 z-10 w-56 p-2.5 bg-gray-900 text-white text-xs rounded-lg leading-relaxed shadow-lg">
+                Tier is based on GO term specificity (IA weight). Score = IA weight × confidence. Both values are shown so you can evaluate independently.
+              </span>
             </span>
-          </div>
+          </span>
+        </th>
+        <th className="text-left px-3 py-2.5 text-gray-500 font-semibold">Confidence</th>
+        <th className="text-left px-3 py-2.5 text-gray-500 font-semibold">IA Weight</th>
+        <th className="text-left px-3 py-2.5 text-gray-500 font-semibold">Score</th>
+      </tr></thead>
+      <tbody>{display.map((p,i)=><tr key={i} className={clsx('border-b border-gray-100 hover:bg-blue-50 transition-colors',i%2===0?'bg-white':'bg-gray-50/40')}>
+        <td className="px-5 py-2.5"><a href={`https://amigo.geneontology.org/amigo/term/${p.go_term}`} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 hover:underline font-semibold">{p.go_term}</a><div className="text-gray-400 text-xs mt-0.5">{p.ontology_label}</div></td>
+        <td className="px-3 py-2.5"><OntBadge ont={p.ontology}/></td>
+        <td className="px-3 py-2.5"><TierBadge tier={p.tier}/></td>
+        <td className="px-3 py-2.5"><ConfBar v={p.confidence}/></td>
+        <td className="px-3 py-2.5 font-mono text-gray-600">{p.ia_weight.toFixed(4)}</td>
+        <td className="px-3 py-2.5 font-mono font-bold text-gray-800">{p.combined_score.toFixed(4)}</td>
+      </tr>)}</tbody>
+    </table></div>:
+    <div className="px-5 py-10 text-center"><p className="text-sm text-gray-500">No predictions passed the evidence filter.</p><p className="text-xs text-gray-400 mt-1">Try a longer sequence or check the FASTA format.</p></div>}
+  </div>
+}
 
-          {/* API status */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-ink3">
-              <StatusDot online={online} />
-              <span>{online === null ? 'Connecting…' : online ? `API ready · ${info?.device ?? '…'}` : 'API offline'}</span>
-            </div>
-            {info && (
-              <span className="hidden md:block text-xs text-ink3 bg-surface border border-edge rounded px-2 py-1">
-                MFO {info.ontologies.MFO?.toLocaleString()} · BPO {info.ontologies.BPO?.toLocaleString()} · CCO {info.ontologies.CCO?.toLocaleString()} classifiers
-              </span>
-            )}
-          </div>
+export default function Page() {
+  const [fasta,  setFasta]  = useState('')
+  const [loading,setLoading]= useState(false)
+  const [error,  setError]  = useState<string|null>(null)
+  const [result, setResult] = useState<PredResponse|null>(null)
+  const [online, setOnline] = useState<boolean|null>(null)
+  const [taxQ,   setTaxQ]   = useState('')
+  const [taxRes, setTaxRes] = useState<any[]>([])
+  const [taxLoad,setTaxLoad]= useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const taxTimer= useRef<ReturnType<typeof setTimeout>|null>(null)
+
+  useState(()=>{
+    fetch('/api/health').then(r=>r.ok?r.json():null).then(d=>setOnline(!!d?.status)).catch(()=>setOnline(false))
+  })
+
+  const taxSearch=(q:string)=>{
+    setTaxQ(q); if(taxTimer.current) clearTimeout(taxTimer.current)
+    if(q.trim().length<2){setTaxRes([]);return}
+    taxTimer.current=setTimeout(async()=>{
+      setTaxLoad(true)
+      try{const r=await fetch(`/api/taxonomy/search?q=${encodeURIComponent(q)}`);const d=await r.json();setTaxRes(d.results??[])}catch{setTaxRes([])}finally{setTaxLoad(false)}
+    },400)
+  }
+
+  const submit=useCallback(async()=>{
+    if(!fasta.trim()) return
+    setLoading(true);setError(null);setResult(null)
+    try{
+      const r=await fetch('/api/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fasta})})
+      const d=await r.json(); if(!r.ok) throw new Error(d.error??`HTTP ${r.status}`); setResult(d)
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}
+  },[fasta])
+
+  const seqCount=(fasta.match(/^>/gm)??[]).length
+
+  return <div className="min-h-screen bg-white flex flex-col" style={{fontFamily:'var(--font-plus),sans-serif'}}>
+
+    {/* NAVBAR */}
+    <header className="sticky top-0 z-40 bg-white" style={{boxShadow:'0 1px 0 #e5e7eb'}}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[72px] flex items-center gap-6">
+        <Image src="/logo.png" alt="FunGO" width={145} height={60} className="object-contain shrink-0" priority/>
+        <div className="hidden sm:block w-px h-8 bg-gray-200 shrink-0"/>
+        <div className="flex-1 hidden sm:block">
+          <p className="text-xs font-medium" style={{color:'#1B5FA8'}}>Beyond Prediction — Understanding Function</p>
+          <p className="text-xs mt-0.5 leading-relaxed" style={{color:'#64748b'}}>FunGO predicts Molecular Function, Biological Process, and Cellular Component GO annotations from protein sequences using ESM2 + XGBoost multi-label modeling.</p>
         </div>
-      </header>
-
-      {/* ════════════════════════════════════════════
-          HERO / ABOUT STRIP
-      ════════════════════════════════════════════ */}
-      <div className="bg-gradient-to-r from-primary/5 to-secondary/5 border-b border-edge">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
-          <p className="text-sm text-ink2 leading-relaxed max-w-3xl">
-            <span className="font-semibold text-primary">FunGO</span> leverages the <span className="font-medium">ESM2-t36-3B</span> protein language model combined with <span className="font-medium">4,133 XGBoost classifiers</span> to deliver evidence-tiered Gene Ontology predictions across Molecular Function, Biological Process, and Cellular Component — providing interpretable, information-theoretically scored functional annotations for any protein sequence.
-          </p>
+        <div className="ml-auto shrink-0">
+        {online===false&&(
+          <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{color:'#dc2626',background:'#fef2f2',border:'1px solid #fecaca'}}>
+            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{background:'#ef4444'}}/>
+            API offline
+          </div>
+        )}
+        {online===true&&(
+          <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{color:'#16a34a',background:'#f0fdf4',border:'1px solid #bbf7d0'}}>
+            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{background:'#22c55e'}}/>
+            API ready
+          </div>
+        )}
         </div>
       </div>
+    </header>
 
-      {/* ════════════════════════════════════════════
-          MAIN CONTENT
-      ════════════════════════════════════════════ */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 items-start">
-
-          {/* ── Left panel ── */}
-          <div className="space-y-4">
-
-            {/* FASTA Input */}
-            <div className="card">
-              <div className="card-head flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold text-ink">Sequence Input</h2>
-                  <p className="text-xs text-ink3 mt-0.5">Paste FASTA · max 10 sequences · OX= taxon auto-detected</p>
-                </div>
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="text-xs px-2.5 py-1.5 rounded-lg border border-edge text-ink3 hover:border-primary/40 hover:text-primary transition-colors"
-                >
-                  Upload .fa
-                </button>
-                <input
-                  ref={fileRef} type="file" accept=".fa,.fasta,.txt" className="hidden"
-                  onChange={e => {
-                    const f = e.target.files?.[0]
-                    if (f) { const r = new FileReader(); r.onload = ev => setFasta(ev.target?.result as string ?? ''); r.readAsText(f) }
-                  }}
-                />
-              </div>
-              <textarea
-                className="seq w-full bg-white text-xs text-ink placeholder:text-ink3/50 p-4 resize-none focus:outline-none"
-                rows={14}
-                placeholder={`>sp|P00519|ABL1_HUMAN OS=Homo sapiens OX=9606\nMLEICLKLVGCKSKKGL…\n\nPaste one or more FASTA sequences.\nUniProt headers with OX= are auto-parsed.`}
-                value={fasta}
-                onChange={e => setFasta(e.target.value)}
-                onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submit() }}
-                spellCheck={false}
-              />
-              <div className="flex items-center justify-between px-4 py-2 border-t border-edge bg-surface">
-                <span className="text-xs text-ink3">{seqCount > 0 ? `${seqCount} sequence${seqCount !== 1 ? 's' : ''}` : 'No sequences detected'}</span>
-                <button onClick={() => setFasta(EXAMPLE)} className="text-xs text-ink3 hover:text-primary transition-colors">Load example</button>
-              </div>
+    {/* HERO */}
+    <div style={{background:'linear-gradient(135deg,#f0f7ff 0%,#e8f5f5 50%,#f5f0ff 100%)',borderBottom:'1px solid #e5e7eb'}}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <h1 className="text-2xl font-bold mb-2" style={{color:'#0f172a'}}>Decoding Protein Function from Sequence</h1>
+        <p className="text-sm max-w-3xl leading-relaxed mb-5" style={{color:'#475569'}}>FunGO predicts Gene Ontology (GO) annotations — Molecular Function, Biological Process, and Cellular Component — directly from protein sequences, using deep language model embeddings and evidence-tiered multi-label classification.</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          {[{s:'1',l:'Paste FASTA sequence',c:'#1B5FA8'},{s:'2',l:'Run prediction',c:'#028090'},{s:'3',l:'Explore GO annotations',c:'#6366f1'}].map((item,i)=><div key={i} className="flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1.5" style={{boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+              <span className="w-5 h-5 rounded-full text-white text-xs font-bold flex items-center justify-center" style={{background:item.c}}>{item.s}</span>
+              <span className="text-xs font-medium" style={{color:'#334155'}}>{item.l}</span>
             </div>
-
-            {/* Options */}
-            <div className="card">
-              <div className="card-head">
-                <h3 className="text-xs font-semibold text-ink3 uppercase tracking-wider">Options</h3>
-              </div>
-              <div className="px-4 py-3 space-y-3">
-                <label className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-ink">Debug mode</p>
-                    <p className="text-xs text-ink3">Show why predictions were filtered out</p>
-                  </div>
-                  <Toggle on={debug} set={setDebug} color="indigo" />
-                </label>
-              </div>
-            </div>
-
-            {/* Submit */}
-            <button
-              onClick={submit}
-              disabled={loading || !fasta.trim() || !online}
-              className={clsx(
-                'w-full py-3.5 rounded-xl text-sm font-semibold transition-all',
-                loading || !fasta.trim() || !online
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-edge'
-                  : 'bg-primary text-white hover:bg-primary-dark shadow-sm hover:shadow-md'
-              )}
-            >
-              {loading ? 'Running prediction…' : !online ? 'API offline — start Flask' : `Predict GO Terms${seqCount > 0 ? ` (${seqCount})` : ''}`}
-            </button>
-            <p className="text-xs text-center text-ink3 -mt-1">Ctrl+Enter to submit · ~20–60 s with embedding cache</p>
-
-            {/* Taxonomy lookup */}
-            <div className="card">
-              <div className="card-head">
-                <h3 className="text-sm font-semibold text-ink">Taxonomy Lookup</h3>
-                <p className="text-xs text-ink3 mt-0.5">Find NCBI taxon IDs for FASTA headers</p>
-              </div>
-              <div className="p-3">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="e.g. homo sapiens, mus musculus…"
-                    value={taxQ}
-                    onChange={e => taxSearch(e.target.value)}
-                    className="w-full bg-surface border border-edge rounded-lg px-3 py-2 text-xs text-ink placeholder:text-ink3 focus:border-primary/40"
-                  />
-                  {taxLoad && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 border border-edge border-t-primary rounded-full spin" />
-                  )}
-                </div>
-                {taxRes.length > 0 && (
-                  <div className="mt-2 space-y-1.5 max-h-48 overflow-y-auto">
-                    {taxRes.map((r, i) => (
-                      <div key={i} className="p-2 rounded-lg bg-surface border border-edge text-xs">
-                        {r.error ? (
-                          <span className="text-red-500">{r.error}</span>
-                        ) : (
-                          <>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-ink">{r.scientific_name}</span>
-                              <span className="font-mono text-primary font-semibold">OX={r.taxon_id}</span>
-                            </div>
-                            {r.common_name && <div className="text-ink3 mt-0.5">{r.common_name} · {r.rank}</div>}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Evidence tier guide */}
-            <div className="card">
-              <div className="card-head">
-                <h3 className="text-sm font-semibold text-ink">Evidence Tiers</h3>
-                <p className="text-xs text-ink3 mt-0.5">Score = IA weight × confidence</p>
-              </div>
-              <div className="divide-y divide-edge">
-                {[
-                  { tier: 'STRONG'    as Tier, rule: 'IA > 5.0 · conf ≥ 0.30', desc: 'Highly specific GO term with reliable model confidence' },
-                  { tier: 'MODERATE'  as Tier, rule: 'IA > 2.0 · conf ≥ 0.50', desc: 'Moderately specific term with acceptable confidence' },
-                  { tier: 'INDICATIVE'as Tier, rule: 'IA > 1.0 · conf ≥ 0.65', desc: 'Lower specificity — requires high confidence to qualify' },
-                ].map(({ tier, rule, desc }) => (
-                  <div key={tier} className="px-4 py-3 flex items-start gap-3">
-                    <TierBadge tier={tier} />
-                    <div>
-                      <p className="text-xs font-mono text-ink2">{rule}</p>
-                      <p className="text-xs text-ink3 mt-0.5">{desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Right panel ── */}
-          <div className="space-y-4">
-
-            {/* Results meta bar */}
-            {(result || loading || error) && (
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                {result && (
-                  <p className="text-sm text-ink3">
-                    <span className="text-ink font-semibold">{result.metadata.total_displayed}</span> predictions shown
-                    &nbsp;·&nbsp;
-                    <span className="text-ink font-semibold">{result.metadata.n_proteins}</span> protein{result.metadata.n_proteins !== 1 ? 's' : ''}
-                    &nbsp;·&nbsp;
-                    <span className="text-primary font-semibold">{result.metadata.elapsed_seconds}s</span>
-                    &nbsp;·&nbsp;{result.metadata.device}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Loading */}
-            {loading && <LoadingCard />}
-
-            {/* Error */}
-            {error && (
-              <div className="card border-red-200">
-                <div className="px-5 py-4">
-                  <p className="text-sm font-semibold text-red-600">Prediction failed</p>
-                  <p className="text-xs font-mono text-red-500 mt-1 break-all">{error}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Result cards */}
-            {result && Object.entries(result.predictions).map(([pid, data], i) => (
-              <ProteinCard key={pid} pid={pid} data={data} jobId={result.job_id} idx={i} />
-            ))}
-
-            {/* Empty state */}
-            {!loading && !error && !result && (
-              <div className="card py-16 text-center">
-                <div className="w-14 h-14 rounded-full bg-primary/8 border border-primary/15 flex items-center justify-center mx-auto mb-4">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" stroke="#1B5FA8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <p className="text-base font-semibold text-ink">Paste a FASTA sequence to begin</p>
-                <p className="text-sm text-ink3 mt-2 max-w-sm mx-auto">
-                  FunGO predicts GO terms across MFO, BPO, and CCO using ESM2-t36-3B embeddings and XGBoost classifiers with evidence-tiered quality filtering.
-                </p>
-                <div className="flex justify-center gap-2 mt-5">
-                  {['MFO','BPO','CCO'].map(o => (
-                    <span key={o} className={clsx('text-xs px-2.5 py-1 rounded-full', ONT[o].pill)}>
-                      <span className="w-1.5 h-1.5 rounded-full inline-block mr-1.5" style={{ background: ONT[o].dot }} />
-                      {ONT[o].label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+            {i<2&&<span style={{color:'#94a3b8',fontSize:14}}>→</span>}
+          </div>)}
         </div>
-      </main>
-
-      {/* ════════════════════════════════════════════
-          FOOTER
-      ════════════════════════════════════════════ */}
-      <footer className="border-t border-edge bg-surface mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-
-          {/* Developer team */}
-          <div className="mb-8">
-            <p className="text-xs font-semibold text-ink3 uppercase tracking-wider mb-5">Development Team</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              {TEAM.map(dev => (
-                <div key={dev.name} className="flex items-start gap-3">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                    style={{ background: dev.color }}
-                  >
-                    {dev.initials}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-ink">{dev.name}</p>
-                    <p className="text-xs text-primary font-medium">{dev.role}</p>
-                    <p className="text-xs text-ink3">{dev.title}</p>
-                    <p className="text-xs text-ink3">{dev.dept}</p>
-                    <p className="text-xs text-ink3">{dev.uni}</p>
-                    {dev.email && (
-                      <a href={`mailto:${dev.email}`} className="text-xs text-primary hover:underline mt-0.5 block">
-                        {dev.email}
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="hr mb-5" />
-
-          {/* Bottom bar */}
-          <div className="flex items-center justify-between flex-wrap gap-3 text-xs text-ink3">
-            <div className="flex items-center gap-3">
-              <Image src="/logo.png" alt="FunGO" width={72} height={30} className="object-contain opacity-70" />
-              <span>School of Biochemistry and Biotechnology · University of the Punjab, Lahore</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <a href="https://amigo.geneontology.org" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">AmiGO Browser</a>
-              <span>ESM2-t36-3B · XGBoost · {new Date().getFullYear()}</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      </div>
     </div>
-  )
+
+    {/* MAIN */}
+    <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8">
+      <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-6 items-start">
+
+        {/* Left */}
+        <div className="space-y-4">
+          {/* Input */}
+          <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+            <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+              <div><h2 className="text-sm font-semibold text-gray-800">Sequence Input</h2><p className="text-xs text-gray-500 mt-0.5">FASTA format · max 10 sequences</p></div>
+              <button onClick={()=>fileRef.current?.click()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600 transition-colors">Upload .fa</button>
+              <input ref={fileRef} type="file" accept=".fa,.fasta,.txt" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>setFasta(ev.target?.result as string??'');r.readAsText(f)}}}/>
+            </div>
+            <textarea className="w-full bg-white text-xs text-gray-800 placeholder:text-gray-400 p-4 resize-none focus:outline-none" style={{fontFamily:'var(--font-jb),monospace'}} rows={12}
+              placeholder={`>sp|P00519|ABL1_HUMAN OS=Homo sapiens OX=9606\nMLEICLKLVGCKSKKGL…\n\nPaste one or more FASTA sequences.`}
+              value={fasta} onChange={e=>setFasta(e.target.value)}
+              onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter') submit()}} spellCheck={false}/>
+            <div className="flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-gray-50">
+              <span className="text-xs text-gray-500">{seqCount>0?`${seqCount} sequence${seqCount!==1?'s':''}`:'No sequences'}</span>
+              <button onClick={()=>setFasta(EXAMPLE_FASTA)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Try sample</button>
+            </div>
+          </div>
+
+          {/* Submit */}
+          <button onClick={submit} disabled={loading||!fasta.trim()||!online}
+            className={clsx('w-full py-3.5 rounded-xl text-sm font-bold transition-all',loading||!fasta.trim()||!online?'bg-gray-100 text-gray-400 cursor-not-allowed':'')}
+            style={(!loading&&fasta.trim()&&online)?{background:'linear-gradient(135deg,#1B5FA8,#028090)',color:'white',boxShadow:'0 4px 14px rgba(27,95,168,0.25)'}:{}}>
+            {loading?'Running prediction…':!online?'API offline':`Predict GO Terms${seqCount>0?` (${seqCount})`:''}`}
+          </button>
+          <p className="text-xs text-center text-gray-400 -mt-1">Ctrl+Enter to submit</p>
+
+          {/* Tiers */}
+          <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+            <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50">
+              <h3 className="text-sm font-semibold text-gray-800">Evidence Tiers</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Score = IA weight × confidence · Tier reflects GO term specificity</p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {[
+                {tier:'STRONG' as Tier,    rule:'IA > 5.0  ·  conf ≥ 0.30', desc:'Highly specific GO term — even moderate confidence is meaningful'},
+                {tier:'MODERATE' as Tier,  rule:'IA > 2.0  ·  conf ≥ 0.50', desc:'Moderately specific term with acceptable model confidence'},
+                {tier:'INDICATIVE' as Tier,rule:'IA > 1.0  ·  conf ≥ 0.65', desc:'Lower specificity — high confidence required to qualify'},
+              ].map(({tier,rule,desc})=><div key={tier} className="px-4 py-3 flex items-start gap-3">
+                <TierBadge tier={tier}/>
+                <div><p className="text-xs font-mono text-gray-600">{rule}</p><p className="text-xs text-gray-400 mt-0.5">{desc}</p></div>
+              </div>)}
+            </div>
+          </div>
+
+          {/* How to use */}
+          <Collapsible title="How to Use FunGO" icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#1B5FA8" strokeWidth="1.3"/><path d="M8 7v4M8 5.5v.5" stroke="#1B5FA8" strokeWidth="1.3" strokeLinecap="round"/></svg>}>
+            <div className="px-5 py-4 space-y-4 text-xs text-gray-600 leading-relaxed">
+              <div><p className="font-semibold text-gray-800 mb-1">Step 1 — Prepare your sequence</p>
+              <p>Paste a protein sequence in FASTA format. Each entry must start with a header line beginning with <code className="bg-gray-100 px-1 rounded">{'>'}</code>. Up to 10 sequences can be submitted at once.</p></div>
+              <div><p className="font-semibold text-gray-800 mb-1">Step 2 — Add taxonomy ID (recommended)</p>
+              <p>Include <code className="bg-gray-100 px-1 rounded">OX=9606</code> in the header for better accuracy. Use the lookup below if you need to find the taxon ID:</p>
+              <div className="mt-2 relative">
+                <input type="text" placeholder="e.g. homo sapiens, mus musculus…" value={taxQ} onChange={e=>taxSearch(e.target.value)}
+                  className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-800 placeholder:text-gray-400 focus:border-blue-300 focus:outline-none"/>
+                {taxLoad&&<div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 border border-gray-200 border-t-blue-500 rounded-full animate-spin"/>}
+              </div>
+              {taxRes.length>0&&<div className="mt-1.5 space-y-1 max-h-36 overflow-y-auto">
+                {taxRes.map((r,i)=><div key={i} className="p-2 rounded-lg bg-gray-50 border border-gray-200 text-xs">
+                  {r.error?<span className="text-red-500">{r.error}</span>:<div className="flex items-center justify-between gap-2"><span className="font-medium text-gray-800">{r.scientific_name}</span><span className="font-mono text-blue-700 font-bold">OX={r.taxon_id}</span></div>}
+                </div>)}
+              </div>}</div>
+              <div><p className="font-semibold text-gray-800 mb-1">Step 3 — Run and interpret</p>
+              <p>Click <strong>Predict GO Terms</strong>. Results are sorted by Score (IA weight × confidence). Click any GO term to open it in AmiGO. Download the full CSV for all predictions beyond the top 20.</p></div>
+              <div className="space-y-2">
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                  <p className="font-semibold text-blue-800 mb-1">What is IA Weight?</p>
+                  <p className="text-blue-700">Information Accretion (IA) weight measures how <strong>specific</strong> a GO term is in the ontology hierarchy. A high IA value (e.g. 7.0) means the term is very specific — few proteins carry that annotation. A low IA (e.g. 0.5) means the term is generic. Tier assignment is primarily based on IA weight.</p>
+                </div>
+                <div className="bg-teal-50 border border-teal-100 rounded-lg p-3">
+                  <p className="font-semibold text-teal-800 mb-1">What is Confidence Score?</p>
+                  <p className="text-teal-700">Confidence reflects the XGBoost classifier's certainty for predicting that GO term (0–100%). Higher confidence means the model is more certain. Combined Score = IA × Confidence — this balances specificity and certainty.</p>
+                </div>
+                <div className="rounded-lg p-3 space-y-1.5" style={{background:'#fefce8',border:'1px solid #fef08a'}}>
+                  <p className="font-semibold mb-1" style={{color:'#713f12'}}>Evidence Tier Descriptions</p>
+                  <p style={{color:'#92400e'}}><strong>Strong Evidence</strong> (IA &gt; 5.0, conf ≥ 30%): Very specific GO term. Even moderate confidence is biologically meaningful for such specific annotations.</p>
+                  <p style={{color:'#1e40af'}}><strong>Moderate Evidence</strong> (IA &gt; 2.0, conf ≥ 50%): Moderately specific term with acceptable model confidence.</p>
+                  <p style={{color:'#374151'}}><strong>Indicative</strong> (IA &gt; 1.0, conf ≥ 65%): Lower specificity term — requires higher confidence to qualify as a prediction worth reporting.</p>
+                </div>
+              </div>
+            </div>
+          </Collapsible>
+        </div>
+
+        {/* Right */}
+        <div className="space-y-4">
+          {result&&<p className="text-sm text-gray-500">
+            <span className="text-gray-900 font-semibold">{result.metadata.total_displayed}</span> predictions ·{' '}
+            <span className="text-gray-900 font-semibold">{result.metadata.n_proteins}</span> protein{result.metadata.n_proteins!==1?'s':''} ·{' '}
+            <span className="text-blue-700 font-semibold">{result.metadata.elapsed_seconds}s</span> · {result.metadata.device}
+          </p>}
+
+          {loading&&<div className="border border-gray-200 rounded-xl py-16 flex flex-col items-center gap-5 bg-white">
+            <div className="relative w-12 h-12"><div className="absolute inset-0 rounded-full border-2 border-blue-100 border-t-blue-600 animate-spin"/></div>
+            <div className="text-center"><p className="text-sm font-semibold text-gray-800">Running prediction pipeline</p><p className="text-xs text-gray-500 mt-1">ESM2-t36-3B embedding · XGBoost scoring</p><p className="text-xs text-gray-400 mt-0.5">First run may take 1–2 minutes</p></div>
+          </div>}
+
+          {error&&<div className="border border-red-200 rounded-xl px-5 py-4 bg-red-50"><p className="text-sm font-semibold text-red-600">Prediction failed</p><p className="text-xs font-mono text-red-500 mt-1 break-all">{error}</p></div>}
+
+          {result&&Object.entries(result.predictions).map(([pid,data])=><ProteinCard key={pid} pid={pid} data={data} jobId={result.job_id}/>)}
+
+          {!loading&&!error&&!result&&<div className="border border-gray-200 rounded-xl py-16 text-center bg-white">
+            <div className="w-14 h-14 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center mx-auto mb-4">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" stroke="#1B5FA8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <p className="text-base font-semibold text-gray-800">Paste a FASTA sequence to begin</p>
+            <p className="text-sm text-gray-500 mt-2 max-w-sm mx-auto">Predictions are returned across all three GO ontologies, ranked by combined specificity and confidence score.</p>
+            <div className="flex justify-center gap-2 mt-5 flex-wrap">
+              {Object.entries(ONT).map(([key,o])=><span key={key} className={clsx('text-xs px-3 py-1 rounded-full',o.pill)}><span className="w-1.5 h-1.5 rounded-full inline-block mr-1.5" style={{background:o.dot}}/>{o.label}</span>)}
+            </div>
+          </div>}
+        </div>
+      </div>
+    </main>
+
+    {/* FOOTER */}
+    <footer className="mt-12" style={{background:'linear-gradient(135deg,#0f172a,#1e293b)',borderTop:'none'}}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+        <p className="text-xs font-semibold uppercase tracking-wider mb-6" style={{color:"#94a3b8"}}>Development Team</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {TEAM.map(dev=><div key={dev.name} className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{background:dev.color}}>{dev.initials}</div>
+            <div>
+              <p className="text-sm font-semibold" style={{color:"#f1f5f9"}}>{dev.name}</p>
+              <p className="text-xs" style={{color:"#94a3b8"}}>{dev.title}</p>
+              <p className="text-xs" style={{color:"#64748b"}}>{dev.dept}</p>
+              <p className="text-xs" style={{color:"#64748b"}}>{dev.uni}</p>
+              <a href={`mailto:${dev.email}`} className="text-xs hover:underline mt-0.5 block" style={{color:"#60a5fa"}}>{dev.email}</a>
+            </div>
+          </div>)}
+        </div>
+        <div className="mt-8 pt-5 flex items-center justify-between flex-wrap gap-3 text-xs" style={{borderTop:"1px solid #1e3a5f",color:"#475569"}}>
+          <div className="flex items-center gap-3">
+            <Image src="/logo.png" alt="FunGO" width={80} height={34} className="object-contain opacity-60"/>
+            <span>School of Biochemistry and Biotechnology · University of the Punjab, Lahore</span>
+          </div>
+          <span>ESM2-t36-3B · XGBoost · {new Date().getFullYear()}</span>
+        </div>
+      </div>
+    </footer>
+  </div>
 }
