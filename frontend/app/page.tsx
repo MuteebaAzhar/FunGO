@@ -29,7 +29,7 @@ const TIER_CFG: Record<Tier,{bg:string;text:string;border:string;dot:string}> = 
   INDICATIVE:{bg:'bg-gray-50',  text:'text-gray-700', border:'border-gray-300', dot:'#6b7280'},
 }
 const TEAM = [
-  {name:'Muteeba Azhar',      title:'MS Researcher',      dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'muteebaazhar18@gmail.com',initials:'MA',color:'#6366f1'},
+  {name:'Muteeba Azhar',      title:'MS Researcher',      dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'muteeba.res.sbb@pu.edu.pk',initials:'MA',color:'#6366f1'},
   {name:'Dr. Naeem Mahmood',  title:'Assistant Professor',dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'naeem.sbb@pu.edu.pk',   initials:'NM',color:'#028090'},
   {name:'Dr. Beenish Maqsood',title:'Assistant Professor',dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'beenish.ibb@pu.edu.pk',initials:'BM',color:'#1B5FA8'},
 ]
