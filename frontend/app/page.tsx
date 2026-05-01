@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import clsx from 'clsx'
 
@@ -29,9 +29,9 @@ const TIER_CFG: Record<Tier,{bg:string;text:string;border:string;dot:string}> = 
   INDICATIVE:{bg:'bg-gray-50',  text:'text-gray-700', border:'border-gray-300', dot:'#6b7280'},
 }
 const TEAM = [
-  {name:'Muteeba Azhar',      title:'MS Researcher',      dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'muteebaazhar18@gmail.com',initials:'MA',color:'#6366f1'},
-  {name:'Dr. Naeem Mahmood',  title:'Assistant Professor',dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'naeem.sbb@pu.edu.pk',   initials:'NM',color:'#028090'},
   {name:'Dr. Beenish Maqsood',title:'Assistant Professor',dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'beenish.ibb@pu.edu.pk',initials:'BM',color:'#1B5FA8'},
+  {name:'Dr. Naeem Mahmood',  title:'Assistant Professor',dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'naeem.sbb@pu.edu.pk',   initials:'NM',color:'#028090'},
+  {name:'Muteeba Azhar',      title:'MS Researcher',      dept:'School of Biochemistry and Biotechnology',uni:'University of the Punjab, Lahore',email:'muteebaazhar18@gmail.com',initials:'MA',color:'#6366f1'},
 ]
 
 function StatusDot({online}:{online:boolean|null}) {
@@ -130,7 +130,7 @@ export default function Page() {
   const fileRef = useRef<HTMLInputElement>(null)
   const taxTimer= useRef<ReturnType<typeof setTimeout>|null>(null)
 
-  useEffect(()=>{
+  useState(()=>{
     fetch('/api/health').then(r=>r.ok?r.json():null).then(d=>setOnline(!!d?.status)).catch(()=>setOnline(false))
   })
 
@@ -196,7 +196,7 @@ export default function Page() {
     <div style={{background:'linear-gradient(135deg,#f0f7ff 0%,#e8f5f5 50%,#f5f0ff 100%)',borderBottom:'1px solid #e5e7eb'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <h1 className="text-2xl font-bold mb-2" style={{color:'#0f172a'}}>Decoding Protein Function from Sequence</h1>
-        <p className="text-sm max-w-3xl leading-relaxed mb-5" style={{color:'#475569'}}>FunGO is designed to infer protein function directly from amino acid sequences. It predicts Gene Ontology (GO) annotations across Molecular Function, Biological Process and Cellular Component, providing a comprehensive functional profile of proteins.</p>
+        <p className="text-sm max-w-3xl leading-relaxed mb-5" style={{color:'#475569'}}>FunGO predicts Gene Ontology (GO) annotations — Molecular Function, Biological Process, and Cellular Component — directly from protein sequences, using deep language model embeddings and evidence-tiered multi-label classification.</p>
         <div className="flex items-center gap-2 flex-wrap">
           {[{s:'1',l:'Paste FASTA sequence',c:'#1B5FA8'},{s:'2',l:'Run prediction',c:'#028090'},{s:'3',l:'Explore GO annotations',c:'#6366f1'}].map((item,i)=><div key={i} className="flex items-center gap-2">
             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1.5" style={{boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
