@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import clsx from 'clsx'
 
@@ -130,7 +130,7 @@ export default function Page() {
   const fileRef = useRef<HTMLInputElement>(null)
   const taxTimer= useRef<ReturnType<typeof setTimeout>|null>(null)
 
-  useState(()=>{
+  useEffect(()=>{
     fetch('/api/health').then(r=>r.ok?r.json():null).then(d=>setOnline(!!d?.status)).catch(()=>setOnline(false))
   })
 
