@@ -157,7 +157,6 @@ export default function Page() {
   return <div className="min-h-screen bg-white flex flex-col" style={{fontFamily:'var(--font-plus),sans-serif'}}>
 
     {/* NAVBAR */}
-<<<<<<< HEAD
     <header className="sticky top-0 z-40 bg-white" style={{boxShadow:'0 1px 0 #e5e7eb'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[72px] flex items-center gap-6">
         <Image src="/logo.png" alt="FunGO" width={145} height={60} className="object-contain shrink-0" priority/>
@@ -179,20 +178,11 @@ export default function Page() {
             API ready
           </div>
         )}
-=======
-    <header className="sticky top-0 z-40 bg-white border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
-        <Image src="/logo.png" alt="FunGO" width={155} height={65} className="object-contain" priority/>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <StatusDot online={online}/>
-          <span>{online===null?'Connecting…':online?'API ready':'API offline'}</span>
->>>>>>> aec45cb (UI: publication-quality redesign Phase 1)
         </div>
       </div>
     </header>
 
     {/* HERO */}
-<<<<<<< HEAD
     <div style={{background:'linear-gradient(135deg,#f0f7ff 0%,#e8f5f5 50%,#f5f0ff 100%)',borderBottom:'1px solid #e5e7eb'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <h1 className="text-2xl font-bold mb-2" style={{color:'#0f172a'}}>Decoding Protein Function from Sequence</h1>
@@ -204,19 +194,6 @@ export default function Page() {
               <span className="text-xs font-medium" style={{color:'#334155'}}>{item.l}</span>
             </div>
             {i<2&&<span style={{color:'#94a3b8',fontSize:14}}>→</span>}
-=======
-    <div className="bg-gradient-to-r from-blue-50 to-teal-50 border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-7">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Decoding Protein Function from Sequence</h1>
-        <p className="text-sm text-gray-600 max-w-3xl leading-relaxed">Predict Molecular Function, Biological Process, and Cellular Component annotations directly from protein sequences using multi-label Gene Ontology modeling.</p>
-        <div className="flex items-center gap-2 mt-4 flex-wrap">
-          {[{s:'1',l:'Paste FASTA sequence'},{s:'2',l:'Run prediction'},{s:'3',l:'Explore GO annotations'}].map((item,i)=><div key={i} className="flex items-center gap-2">
-            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1.5 shadow-sm">
-              <span className="w-5 h-5 rounded-full bg-blue-700 text-white text-xs font-bold flex items-center justify-center">{item.s}</span>
-              <span className="text-xs font-medium text-gray-700">{item.l}</span>
-            </div>
-            {i<2&&<span className="text-gray-300">→</span>}
->>>>>>> aec45cb (UI: publication-quality redesign Phase 1)
           </div>)}
         </div>
       </div>
@@ -247,12 +224,8 @@ export default function Page() {
 
           {/* Submit */}
           <button onClick={submit} disabled={loading||!fasta.trim()||!online}
-<<<<<<< HEAD
             className={clsx('w-full py-3.5 rounded-xl text-sm font-bold transition-all',loading||!fasta.trim()||!online?'bg-gray-100 text-gray-400 cursor-not-allowed':'')}
             style={(!loading&&fasta.trim()&&online)?{background:'linear-gradient(135deg,#1B5FA8,#028090)',color:'white',boxShadow:'0 4px 14px rgba(27,95,168,0.25)'}:{}}>
-=======
-            className={clsx('w-full py-3.5 rounded-xl text-sm font-bold transition-all',loading||!fasta.trim()||!online?'bg-gray-100 text-gray-400 cursor-not-allowed':'bg-blue-700 text-white hover:bg-blue-800 shadow-sm hover:shadow-md')}>
->>>>>>> aec45cb (UI: publication-quality redesign Phase 1)
             {loading?'Running prediction…':!online?'API offline':`Predict GO Terms${seqCount>0?` (${seqCount})`:''}`}
           </button>
           <p className="text-xs text-center text-gray-400 -mt-1">Ctrl+Enter to submit</p>
@@ -294,7 +267,6 @@ export default function Page() {
               </div>}</div>
               <div><p className="font-semibold text-gray-800 mb-1">Step 3 — Run and interpret</p>
               <p>Click <strong>Predict GO Terms</strong>. Results are sorted by Score (IA weight × confidence). Click any GO term to open it in AmiGO. Download the full CSV for all predictions beyond the top 20.</p></div>
-<<<<<<< HEAD
               <div className="space-y-2">
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
                   <p className="font-semibold text-blue-800 mb-1">What is IA Weight?</p>
@@ -310,11 +282,6 @@ export default function Page() {
                   <p style={{color:'#1e40af'}}><strong>Moderate Evidence</strong> (IA &gt; 2.0, conf ≥ 50%): Moderately specific term with acceptable model confidence.</p>
                   <p style={{color:'#374151'}}><strong>Indicative</strong> (IA &gt; 1.0, conf ≥ 65%): Lower specificity term — requires higher confidence to qualify as a prediction worth reporting.</p>
                 </div>
-=======
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                <p className="font-semibold text-blue-800 mb-1">Understanding the tiers</p>
-                <p className="text-blue-700">Tier is assigned based on GO term specificity (Information Accretion weight), not confidence alone. A Strong Evidence hit indicates the predicted GO term is highly specific in the ontology hierarchy. Confidence and IA weight are shown separately so you can evaluate both dimensions independently.</p>
->>>>>>> aec45cb (UI: publication-quality redesign Phase 1)
               </div>
             </div>
           </Collapsible>
@@ -352,20 +319,13 @@ export default function Page() {
     </main>
 
     {/* FOOTER */}
-<<<<<<< HEAD
     <footer className="mt-12" style={{background:'linear-gradient(135deg,#0f172a,#1e293b)',borderTop:'none'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
         <p className="text-xs font-semibold uppercase tracking-wider mb-6" style={{color:"#94a3b8"}}>Development Team</p>
-=======
-    <footer className="border-t border-gray-200 bg-gray-50 mt-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-6">Development Team</p>
->>>>>>> aec45cb (UI: publication-quality redesign Phase 1)
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {TEAM.map(dev=><div key={dev.name} className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{background:dev.color}}>{dev.initials}</div>
             <div>
-<<<<<<< HEAD
               <p className="text-sm font-semibold" style={{color:"#f1f5f9"}}>{dev.name}</p>
               <p className="text-xs" style={{color:"#94a3b8"}}>{dev.title}</p>
               <p className="text-xs" style={{color:"#64748b"}}>{dev.dept}</p>
@@ -375,17 +335,6 @@ export default function Page() {
           </div>)}
         </div>
         <div className="mt-8 pt-5 flex items-center justify-between flex-wrap gap-3 text-xs" style={{borderTop:"1px solid #1e3a5f",color:"#475569"}}>
-=======
-              <p className="text-sm font-semibold text-gray-800">{dev.name}</p>
-              <p className="text-xs text-gray-500">{dev.title}</p>
-              <p className="text-xs text-gray-400">{dev.dept}</p>
-              <p className="text-xs text-gray-400">{dev.uni}</p>
-              <a href={`mailto:${dev.email}`} className="text-xs text-blue-600 hover:underline mt-0.5 block">{dev.email}</a>
-            </div>
-          </div>)}
-        </div>
-        <div className="border-t border-gray-200 mt-8 pt-5 flex items-center justify-between flex-wrap gap-3 text-xs text-gray-400">
->>>>>>> aec45cb (UI: publication-quality redesign Phase 1)
           <div className="flex items-center gap-3">
             <Image src="/logo.png" alt="FunGO" width={80} height={34} className="object-contain opacity-60"/>
             <span>School of Biochemistry and Biotechnology · University of the Punjab, Lahore</span>
